@@ -1,6 +1,7 @@
 package com.ithetrollidk.playerbalancer.ping;
 
 import com.ithetrollidk.playerbalancer.Callback;
+import com.ithetrollidk.playerbalancer.PlayerBalancer;
 import com.ithetrollidk.playerbalancer.server.BungeeServer;
 import com.ithetrollidk.playerbalancer.server.ServerGroupStorage;
 import com.ithetrollidk.playerbalancer.server.ServerStorage;
@@ -39,7 +40,17 @@ public class StatusStorage {
     public void update(BungeeServer server) {
         this.ping(server.getServerInfo(), (status, throwable) -> {
             if (status == null) {
-                status = new ServerStatus();
+                // Log why the ping failed instead of silently marking the server
+                // offline/full - this was previously swallowed completely.
+                PlayerBalancer.getInstance().getLogger().warning(String.format(
+                        "Ping to server %s failed, keeping previous status: %s",
+                        server.getName(), throwable
+                ));
+                // Keep the previous status instead of resetting to a fresh
+                // ServerStatus() (which reports maxPlayers=0 / offline). A single
+                // failed ping should not instantly make the priority handler think
+                // the server has no room.
+                return;
             }
 
             /*PlayerBalancer.getInstance().getLogger().info(String.format(
@@ -56,7 +67,10 @@ public class StatusStorage {
 
         ProxyServer.getInstance().getScheduler().scheduleAsync(() -> {
             try {
-                BedrockPong rakNetPong = ((BedrockServerInfo) server).ping(1000, TimeUnit.MILLISECONDS).get();
+                // 5 second timeout instead of 1 second - 1s was too aggressive and
+                // could time out under normal load, wrongly marking a healthy
+                // server as offline/full.
+                BedrockPong rakNetPong = ((BedrockServerInfo) server).ping(5000, TimeUnit.MILLISECONDS).get();
                 callback.done(new ServerStatus(rakNetPong.playerCount(), rakNetPong.maximumPlayerCount()), null);
             } catch (InterruptedException | ExecutionException e) {
                 callback.done(null, e);
