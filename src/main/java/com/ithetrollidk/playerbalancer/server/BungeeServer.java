@@ -8,7 +8,11 @@ public class BungeeServer {
 
     private final String group;
     private final String name;
-    private ServerStatus status = null;
+    // Assume the server is online with room for players until the first real ping
+    // completes. Previously this started as null, which crashed the priority
+    // handler (NullPointerException) if a player joined before the first ping
+    // cycle (~5s after startup) finished, producing "no default server" errors.
+    private ServerStatus status = new ServerStatus(0, 9999);
 
     public BungeeServer(String group, String name) {
         this.group = group;
